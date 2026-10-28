@@ -51,5 +51,52 @@
       "hashed_token_rejected": "The bridge rejected the hashed token. Hashed tokens need a correct bridge clock, which the bridge gets via the internet.",
       "invalid_bridge_token": "Error communicating with Nuki bridge"
     }
+  },
+  "entity": {
+    "sensor": {
+      "state": {
+        "name": "State",
+        "state": {
+          "uncalibrated": "Uncalibrated",
+          "locked": "Locked",
+          "unlocking": "Unlocking",
+          "unlocked": "Unlocked",
+          "locking": "Locking",
+          "unlatched": "Unlatched",
+          "lock_n_go": "Unlocked (Lock 'n' Go)",
+          "unlatching": "Unlatching",
+          "motor_blocked": "Motor blocked",
+          "undefined": "Undefined",
+          "untrained": "Untrained",
+          "online": "Online",
+          "ring_to_open_active": "Ring to open active",
+          "open": "Open",
+          "opening": "Opening",
+          "boot_run": "Boot run"
+        }
+      },
+      "door_security_state": {
+        "name": "Door Security State",
+        "state": {
+          "closed_and_locked": "Closed & Locked",
+          "closed_and_unlocked": "Closed & Unlocked",
+          "open": "Open"
+        }
+      },
+      "door_state": {
+        "name": "Door State",
+        "state": {
+          "unavailable": "Unavailable",
+          "deactivated": "Deactivated",
+          "door_closed": "Door closed",
+          "door_opened": "Door open",
+          "door_unknown": "Door state unknown",
+          "calibrating": "Calibrating",
+          "uncalibrated": "Uncalibrated",
+          "removed": "Removed",
+          "unknown": "Unknown"
+        }
+      }
+    }
   }
 }
