@@ -23,6 +23,7 @@ from .constants import DOMAIN
 from .planning import (
     BRIDGE_CALLBACK_CHECK,
     carry_web_data,
+    device_web_failed,
     devices_to_sync,
     plan_callback_changes,
     WEB_RETRY,
@@ -428,6 +429,7 @@ class NukiCoordinator(DataUpdateCoordinator):
         self.entry = entry
         self._pending_syncs = {}
         self._web_failed_at = None
+        self._device_web_state = {}
         entry.async_on_unload(self._cancel_pending_syncs)
         self.api = NukiInterface(
             hass,
@@ -530,6 +532,9 @@ class NukiCoordinator(DataUpdateCoordinator):
             result = dict(devices={}, bridge_info=bridge_info)
             if not device_list:
                 raise HomeAssistantError("No available device data")
+            # Devices disabled in HA (e.g. the other house's lock on the same
+            # Nuki Web account) get no per-device Nuki Web requests.
+            disabled = self._disabled_devices(item["nukiId"] for item in device_list.values())
             for key, item in device_list.items():
                 dev_id = item["nukiId"]
                 if self.api.can_web():
@@ -538,17 +543,19 @@ class NukiCoordinator(DataUpdateCoordinator):
                     device_web_ok = False
                     # Only devices Nuki Web holds (not e.g. a Smart Door, or a lock
                     # of another account); a failure here affects this device only.
-                    if web_ok and web_id in web_list:
+                    if dev_id in disabled:
+                        self._device_web_state.pop(dev_id, None)
+                    elif web_ok and web_id in web_list:
                         try:
                             item["web_auth"] = await self.api.web_list_all_auths(web_id)
                             item["web_auth_ok"] = True
                             item["last_unlock_log"] = await self.api.web_get_last_unlock_log(web_id)
                             item["last_log"] = await self.api.web_get_last_log(web_id)
                             device_web_ok = True
+                            if (state := self._device_web_state.pop(dev_id, None)) and state["warned"]:
+                                _LOGGER.info("Nuki Web answers again for device %s", dev_id)
                         except Exception as err:
-                            _LOGGER.warning(
-                                "Nuki Web request for device %s failed: %s", dev_id, _mask_token(str(err))
-                            )
+                            self._device_web_failure(dev_id, err)
                     if web_list:
                         for field in ("config", "advancedConfig", "openerAdvancedConfig"):
                             item[field] = web_list.get(web_id, {}).get(field)
@@ -576,6 +583,30 @@ class NukiCoordinator(DataUpdateCoordinator):
         else:
             _LOGGER.debug("Nuki Web still not answering: %s", _mask_token(str(err)))
         self._web_failed_at = datetime.now(timezone.utc)
+
+    def _device_web_failure(self, dev_id, err):
+        """A device's Nuki Web requests failed: it keeps its last data, the next poll retries."""
+        state, warn = device_web_failed(
+            self._device_web_state.get(dev_id), datetime.now(timezone.utc)
+        )
+        self._device_web_state[dev_id] = state
+        if warn:
+            _LOGGER.warning(
+                "Nuki Web has not answered for device %s since %s, keeping its last data: %s",
+                dev_id, state["since"].isoformat(timespec="seconds"), _mask_token(str(err)),
+            )
+        else:
+            _LOGGER.debug("Nuki Web request for device %s failed: %s", dev_id, _mask_token(str(err)))
+
+    def _disabled_devices(self, dev_ids) -> set:
+        """The devices of this config entry that are disabled in the device registry."""
+        registry = dr.async_get(self.hass)
+        disabled = set()
+        for dev_id in dev_ids:
+            device = registry.async_get_device_by_identifier((DOMAIN, dev_id), self.entry.entry_id)
+            if device is not None and device.disabled:
+                disabled.add(dev_id)
+        return disabled
 
     def _make_update_method(self):
         async def _update_data():
@@ -644,14 +675,8 @@ class NukiCoordinator(DataUpdateCoordinator):
         if self._web_failed_at is not None:
             _LOGGER.debug("Nuki Web is not answering, no sync at setup")
             return
-        registry = dr.async_get(self.hass)
         devices = list(self.data.get("devices", {}))
-        disabled = set()
-        for dev_id in devices:
-            device = registry.async_get_device(identifiers={(DOMAIN, dev_id)})
-            if device is not None and device.disabled:
-                disabled.add(dev_id)
-        for dev_id in devices_to_sync(devices, disabled):
+        for dev_id in devices_to_sync(devices, self._disabled_devices(devices)):
             try:
                 await self.api.web_sync(self.web_id(dev_id))
             except Exception:

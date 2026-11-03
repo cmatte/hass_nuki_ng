@@ -14,7 +14,7 @@ from homeassistant.helpers import device_registry as dr
 from .nuki import NukiCoordinator
 from .constants import DOMAIN, PLATFORMS
 from .registry_migration import async_migrate_device_registry
-from .planning import action_mismatches
+from .planning import action_mismatches, version_str
 
 
 def via_device_id(entity, identifier: tuple[str, str]) -> str | None:
@@ -304,7 +304,7 @@ class NukiEntity(CoordinatorEntity):
             "name": self.get_name,
             "manufacturer": "Nuki",
             "model": self.model,
-            "sw_version": self.data.get("firmwareVersion"),
+            "sw_version": version_str(self.data.get("firmwareVersion")),
         }
 
         # Add bridging only when valid. HA 2026.10 deprecated `via_device` (an identifier
@@ -361,7 +361,7 @@ class NukiBridge(CoordinatorEntity):
             "name": "Nuki Bridge",
             "manufacturer": "Nuki",
             "model": model,
-            "sw_version": versions.get("firmwareVersion"),
+            "sw_version": version_str(versions.get("firmwareVersion")),
         }
 
 

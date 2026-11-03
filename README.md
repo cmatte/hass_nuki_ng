@@ -6,6 +6,12 @@
 > It gathers the open upstream pull requests and fork fixes, plus fixes nobody had shipped yet.
 > Requires Home Assistant 2026.10 or newer.
 
+### 0.6.6
+* Device lookups use `async_get_device_by_identifier` (scoped to the config entry): `device_registry.async_get_device` is deprecated and stops working in Home Assistant 2027.8
+* Firmware versions are passed to the device registry as strings (Nuki Web sends a number; Home Assistant 2026.12 accepts only strings)
+* Devices disabled in Home Assistant (for example a lock of another home on the same Nuki account) no longer get per-device Nuki Web requests (authorizations, activity log): fewer calls to api.nuki.io on every poll
+* A single slow Nuki Web answer for one device is logged at debug level only (the next poll retries it; the device keeps its last data). A warning is logged once if a device gets no Nuki Web data for 2 minutes, and an info line when it answers again
+
 ### 0.6.5
 * *Reconfigure* (integration entry → ⋮ → Reconfigure): change the bridge address, the Home Assistant URL, the bridge token or the Web API token of an existing entry, e.g. after the bridge got a new IP address. Checked against the bridge before saving; a different bridge is refused, so devices and entity ids stay the same (upstream #236, #140, #206, #18)
 * Setup no longer fails when Nuki Web (api.nuki.io) is down while the bridge works: the bridge entities start, Nuki Web data keeps its last value and Nuki Web is retried every 2 minutes; its entities appear once it answers. Nuki Web requests time out after 20 s instead of hanging (upstream #229, #226, #200)

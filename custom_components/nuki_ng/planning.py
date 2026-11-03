@@ -133,6 +133,29 @@ def web_due(failed_at, now) -> bool:
     return failed_at is None or now - failed_at >= WEB_RETRY
 
 
+def version_str(value) -> str | None:
+    """A firmware version as the string the device registry expects (None stays None).
+
+    Nuki Web sends `firmwareVersion` as an int; HA 2026.12 accepts only strings.
+    """
+    return None if value is None else str(value)
+
+
+def device_web_failed(state, now):
+    """Note a per-device Nuki Web failure; return (new state, whether to warn).
+
+    `state` is None or {"since": first failure, "warned": bool}. A single slow
+    answer from api.nuki.io (the next poll is the retry) is not worth a warning:
+    warn once, when the device has had no fresh Nuki Web data for WEB_RETRY.
+    """
+    if state is None:
+        state = {"since": now, "warned": False}
+    warn = not state["warned"] and now - state["since"] >= WEB_RETRY
+    if warn:
+        state = {**state, "warned": True}
+    return state, warn
+
+
 def carry_web_data(item: dict, previous: dict) -> dict:
     """Fill the Nuki Web fields of a bridge item from the last good poll.
 

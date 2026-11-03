@@ -100,19 +100,57 @@ class FakeApi:
         return {"name": "A"}
 
 
-def coordinator(api):
+class FakeDevice:
+    def __init__(self, disabled):
+        self.disabled = disabled
+
+
+class FakeRegistry:
+    """Only the supported lookup: `async_get_device` (deprecated, removed in HA
+    2027.8) does not exist here, so any call to it fails the test."""
+
+    def __init__(self, disabled=()):
+        self.disabled = set(disabled)
+        self.lookups = []
+
+    def async_get_device_by_identifier(self, identifier, config_entry_id):
+        self.lookups.append((identifier, config_entry_id))
+        return FakeDevice(identifier[1] in self.disabled)
+
+
+class FakeEntry:
+    entry_id = "entry-1"
+
+
+def coordinator(api, registry=None):
     coord = nuki.NukiCoordinator.__new__(nuki.NukiCoordinator)
     coord.api = api
+    coord.hass = object()
+    coord.entry = FakeEntry()
     coord.data = None  # before the first successful poll
     coord.bridge_hook = "http://ha/hook"
     coord._web_failed_at = None
+    coord._device_web_state = {}
+    coord._registry = registry or FakeRegistry()
     return coord
 
 
+@pytest.fixture(autouse=True)
+def fake_device_registry(monkeypatch):
+    # Each coordinator carries its own fake registry
+    monkeypatch.setattr(nuki.dr, "async_get", lambda hass: _current["registry"], raising=False)
+    yield
+
+
+_current = {}
+
+
 def poll(coord):
+    _current["registry"] = coord._registry
     result = asyncio.run(coord._update())
     coord.data = result
     return result
+
 
 
 def test_first_poll_succeeds_with_nuki_web_down():
@@ -163,7 +201,7 @@ def test_web_only_entry_still_fails_without_nuki_web():
     api.can_bridge = lambda: False
     coord = coordinator(api)
     with pytest.raises(Exception) as err:
-        asyncio.run(coord._update())
+        poll(coord)
     assert type(err.value).__name__ == "UpdateFailed"
 
 
@@ -192,3 +230,104 @@ def test_per_device_failure_stays_with_that_device():
     coord = coordinator(FakeApi(auth_up=False))
     poll(coord)
     assert coord._web_failed_at is None  # Nuki Web itself answered
+
+
+GB_LOCK = {"nukiId": 0x3C4D, "deviceType": 0, "name": "Other house", "lastKnownState": {"state": 1}}
+
+
+class TwoLocks(FakeApi):
+    """Two locks on one Nuki Web account; counts the per-device requests."""
+
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.auth_ids = []
+
+    async def bridge_list(self):
+        return {LOCK["nukiId"]: dict(LOCK), GB_LOCK["nukiId"]: dict(GB_LOCK)}
+
+    async def web_list(self):
+        listed = await super().web_list()
+        listed[int("3c4d", 16)] = {"config": {"buttonEnabled": False}}
+        return listed
+
+    async def web_list_all_auths(self, web_id):
+        self.auth_ids.append(web_id)
+        return await super().web_list_all_auths(web_id)
+
+
+def test_disabled_device_gets_no_per_device_web_requests():
+    api = TwoLocks()
+    registry = FakeRegistry(disabled={GB_LOCK["nukiId"]})
+    coord = coordinator(api, registry)
+    devices = poll(coord)["devices"]
+    assert api.auth_ids == [int("1a2b", 16)]  # the enabled lock only
+    assert devices[LOCK["nukiId"]]["web_auth_ok"] is True
+    assert devices[GB_LOCK["nukiId"]]["web_auth_ok"] is False
+    assert devices[GB_LOCK["nukiId"]]["config"] == {"buttonEnabled": False}  # from web_list
+    # looked up by identifier within this config entry (the supported API)
+    assert ((nuki.DOMAIN, GB_LOCK["nukiId"]), "entry-1") in registry.lookups
+
+
+def test_one_slow_answer_is_not_a_warning(caplog):
+    coord = coordinator(FakeApi(auth_up=False))
+    with caplog.at_level("DEBUG"):
+        poll(coord)
+    assert not [r for r in caplog.records if r.levelname == "WARNING"]
+    assert any("failed" in r.getMessage() for r in caplog.records if r.levelname == "DEBUG")
+    assert coord._device_web_state[LOCK["nukiId"]]["warned"] is False
+
+
+def test_warns_once_when_device_stays_without_web_data_then_info_on_recovery(caplog):
+    api = FakeApi()
+    coord = coordinator(api)
+    poll(coord)
+    api.auth_up = False
+    poll(coord)
+    state = coord._device_web_state[LOCK["nukiId"]]
+    state["since"] -= nuki.WEB_RETRY
+    with caplog.at_level("INFO"):
+        poll(coord)
+        poll(coord)
+    warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert len(warnings) == 1
+    assert "has not answered for device" in warnings[0].getMessage()
+    device = coord.data["devices"][LOCK["nukiId"]]
+    assert device["web_auth"] == {7: {"id": 7, "name": "A"}}  # last good data kept
+    caplog.clear()
+    api.auth_up = True
+    with caplog.at_level("INFO"):
+        poll(coord)
+    assert [r.getMessage() for r in caplog.records if r.levelname == "INFO"] == [
+        f"Nuki Web answers again for device {LOCK['nukiId']}"
+    ]
+    assert LOCK["nukiId"] not in coord._device_web_state
+
+
+def test_recovery_without_warning_logs_nothing(caplog):
+    api = FakeApi(auth_up=False)
+    coord = coordinator(api)
+    poll(coord)
+    api.auth_up = True
+    with caplog.at_level("INFO"):
+        poll(coord)
+    assert not [r for r in caplog.records if r.levelname in ("INFO", "WARNING")]
+
+
+def test_sync_on_start_skips_disabled_devices_via_supported_lookup():
+    synced = []
+
+    class SyncApi(TwoLocks):
+        async def web_sync(self, web_id):
+            synced.append(web_id)
+
+    api = SyncApi()
+    registry = FakeRegistry(disabled={GB_LOCK["nukiId"]})
+    coord = coordinator(api, registry)
+    poll(coord)
+
+    async def refresh():
+        pass
+
+    coord.async_request_refresh = refresh
+    asyncio.run(coord.sync_on_start())
+    assert synced == [int("1a2b", 16)]

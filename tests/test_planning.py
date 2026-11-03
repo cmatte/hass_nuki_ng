@@ -203,3 +203,35 @@ class TestWebRetry:
         now = datetime.now(timezone.utc)
         assert planning.web_due(now, now + planning.WEB_RETRY / 2) is False
         assert planning.web_due(now, now + planning.WEB_RETRY) is True
+
+
+def test_version_str():
+    assert planning.version_str(199425) == "199425"
+    assert planning.version_str("3.4.6") == "3.4.6"
+    assert planning.version_str(None) is None
+
+
+def test_device_web_failed_warns_once_after_web_retry():
+    from datetime import datetime, timezone
+    t0 = datetime(2026, 11, 1, 13, 54, tzinfo=timezone.utc)
+    state, warn = planning.device_web_failed(None, t0)
+    assert state == {"since": t0, "warned": False} and warn is False
+    state, warn = planning.device_web_failed(state, t0 + planning.WEB_RETRY / 2)
+    assert warn is False and state["since"] == t0
+    state, warn = planning.device_web_failed(state, t0 + planning.WEB_RETRY)
+    assert warn is True and state["warned"] is True
+    state, warn = planning.device_web_failed(state, t0 + 3 * planning.WEB_RETRY)
+    assert warn is False and state["since"] == t0
+
+
+def test_no_deprecated_registry_lookups_in_the_integration():
+    # device_registry.async_get_device stops working in HA 2027.8
+    import re
+    from conftest import COMPONENT
+    hits = [
+        f"{f.name}:{n}"
+        for f in sorted(COMPONENT.glob("*.py"))
+        for n, line in enumerate(f.read_text().splitlines(), 1)
+        if re.search(r"\.async_get_device\(", line)
+    ]
+    assert hits == []
