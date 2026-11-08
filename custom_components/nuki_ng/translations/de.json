@@ -37,6 +37,53 @@
         "hashed_token_rejected": "Die Bridge hat den gehashten Token abgelehnt. Dafür braucht sie eine korrekte Uhrzeit, die sie über das Internet bezieht.",
         "invalid_bridge_token": "Fehler in der Kommunikation mit der Nuki Bridge"
       }
+    },
+    "entity": {
+      "sensor": {
+        "state": {
+          "name": "Status",
+          "state": {
+            "uncalibrated": "Nicht kalibriert",
+            "locked": "Verriegelt",
+            "unlocking": "Wird entriegelt",
+            "unlocked": "Entriegelt",
+            "locking": "Wird verriegelt",
+            "unlatched": "Falle zurückgezogen",
+            "lock_n_go": "Entriegelt (Lock 'n' Go)",
+            "unlatching": "Falle wird zurückgezogen",
+            "motor_blocked": "Motor blockiert",
+            "undefined": "Unbekannt",
+            "untrained": "Nicht eingerichtet",
+            "online": "Online",
+            "ring_to_open_active": "Klingeln zum Öffnen aktiv",
+            "open": "Offen",
+            "opening": "Wird geöffnet",
+            "boot_run": "Startvorgang"
+          }
+        },
+        "door_security_state": {
+          "name": "Tür-Sicherheitsstatus",
+          "state": {
+            "closed_and_locked": "Geschlossen & verriegelt",
+            "closed_and_unlocked": "Geschlossen & entriegelt",
+            "open": "Offen"
+          }
+        },
+        "door_state": {
+          "name": "Türstatus",
+          "state": {
+            "unavailable": "Nicht verfügbar",
+            "deactivated": "Deaktiviert",
+            "door_closed": "Tür geschlossen",
+            "door_opened": "Tür geöffnet",
+            "door_unknown": "Türzustand unbekannt",
+            "calibrating": "Wird kalibriert",
+            "uncalibrated": "Nicht kalibriert",
+            "removed": "Entfernt",
+            "unknown": "Unbekannt"
+          }
+        }
+      }
     }
   }
   
