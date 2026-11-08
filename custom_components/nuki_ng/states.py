@@ -26,6 +26,16 @@ class LockStates(BaseStates):
     UNDEFINED = 255
 
 
+class OpenerStates(BaseStates):
+    UNTRAINED = 0
+    ONLINE = 1
+    RING_TO_OPEN_ACTIVE = 3
+    OPEN = 5
+    OPENING = 7
+    BOOT_RUN = 253
+    UNDEFINED = 255
+
+
 class DoorSensorStates(BaseStates):
     UNAVAILABLE = 0
     DEACTIVATED = 1
@@ -47,3 +57,16 @@ class DoorSecurityStates(BaseStates):
 class LockModes(BaseStates):
     DOOR_MODE = 2
     CONTINUOUS_MODE = 3
+
+
+def state_key(states: type[BaseStates], code) -> str | None:
+    """Translation key for a numeric Nuki state code; None if unknown."""
+    try:
+        return states(code).translation_key
+    except ValueError:
+        return None
+
+
+def state_options(*groups: type[BaseStates]) -> list[str]:
+    """Translation keys of every state in the groups, without duplicates."""
+    return list(dict.fromkeys(s.translation_key for g in groups for s in g))

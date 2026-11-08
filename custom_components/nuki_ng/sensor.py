@@ -7,7 +7,14 @@ from datetime import datetime
 
 from . import NukiEntity, NukiBridge
 from .constants import DOMAIN
-from .states import DoorSensorStates, LockStates, DoorSecurityStates
+from .states import (
+    DoorSecurityStates,
+    DoorSensorStates,
+    LockStates,
+    OpenerStates,
+    state_key,
+    state_options,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -80,7 +87,7 @@ class Battery(NukiEntity, SensorEntity):
 class LockState(NukiEntity, SensorEntity):
     _attr_translation_key = "state"
     _attr_device_class = SensorDeviceClass.ENUM
-    _attr_options = [state.translation_key for state in LockStates]
+    _attr_options = state_options(LockStates, OpenerStates)
 
     def __init__(self, coordinator, device_id):
         super().__init__(coordinator, device_id)
@@ -90,12 +97,9 @@ class LockState(NukiEntity, SensorEntity):
 
     @property
     def native_value(self):
-        state_name = self.last_state.get("stateName")
-        if state_name is None:
-            return None
-        if state_name == "unlocked (lock 'n' go)":
-            return LockStates.LOCK_N_GO.translation_key
-        return state_name.lower().replace(" ", "_")
+        # From the numeric code: bridge and Nuki Web spell stateName differently.
+        states = OpenerStates if self.coordinator.is_opener(self.device_id) else LockStates
+        return state_key(states, self.last_state.get("state"))
 
     @property
     def entity_category(self):
@@ -130,7 +134,7 @@ class RSSI(NukiEntity, SensorEntity):
 class DoorSensorState(NukiEntity, SensorEntity):
     _attr_translation_key = "door_state"
     _attr_device_class = SensorDeviceClass.ENUM
-    _attr_options = [state.translation_key for state in DoorSensorStates]
+    _attr_options = state_options(DoorSensorStates)
 
     def __init__(self, coordinator, device_id):
         super().__init__(coordinator, device_id)
@@ -140,12 +144,7 @@ class DoorSensorState(NukiEntity, SensorEntity):
 
     @property
     def native_value(self):
-        state_name = self.last_state.get("doorsensorStateName")
-        if state_name is None:
-            return None
-        if state_name == "door state unknown":
-            return DoorSensorStates.DOOR_UNKNOWN.translation_key
-        return state_name.lower().replace(" ", "_")
+        return state_key(DoorSensorStates, self.last_state.get("doorsensorState"))
 
     @property
     def entity_category(self):
@@ -155,7 +154,7 @@ class DoorSensorState(NukiEntity, SensorEntity):
 class DoorSecurityState(NukiEntity, SensorEntity):
     _attr_translation_key = "door_security_state"
     _attr_device_class = SensorDeviceClass.ENUM
-    _attr_options = [state.translation_key for state in DoorSecurityStates]
+    _attr_options = state_options(DoorSecurityStates)
 
     def __init__(self, coordinator, device_id):
         super().__init__(coordinator, device_id)
@@ -179,13 +178,12 @@ class DoorSecurityState(NukiEntity, SensorEntity):
         return self.get_state().translation_key
 
     def get_state(self) -> DoorSecurityStates:
-        lock_state = LockStates(self.last_state.get("state", LockStates.UNDEFINED.value))
-        door_sensor_state = DoorSensorStates(
-            self.last_state.get("doorsensorState", DoorSensorStates.UNKNOWN.value))
-
-        if lock_state == LockStates.LOCKED and door_sensor_state == DoorSensorStates.DOOR_CLOSED:
-            return DoorSecurityStates.CLOSED_AND_LOCKED
-        elif door_sensor_state == DoorSensorStates.DOOR_CLOSED:
+        # Raw codes: an unknown code means "open", never an exception.
+        lock_state = self.last_state.get("state")
+        door_sensor_state = self.last_state.get("doorsensorState")
+        if door_sensor_state == DoorSensorStates.DOOR_CLOSED.value:
+            if lock_state == LockStates.LOCKED.value:
+                return DoorSecurityStates.CLOSED_AND_LOCKED
             return DoorSecurityStates.CLOSED_AND_UNLOCKED
         return DoorSecurityStates.OPEN
 

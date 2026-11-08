@@ -6,6 +6,10 @@
 > It gathers the open upstream pull requests and fork fixes, plus fixes nobody had shipped yet.
 > Requires Home Assistant 2026.10 or newer.
 
+### 0.6.7
+* State, Door State and Door Security State sensors are enum sensors with translated states (English, German), contributed by @33bca in #1. **Their state values change** to keys: e.g. `locked`, `lock_n_go`, `door_closed`, `closed_and_locked` (were "unlocked (lock 'n' go)", "door closed", "Closed & Locked"). Automations or templates that compare these sensors' states need the new values; the UI shows the translated text
+* The keys come from the numeric Nuki state code, so bridge and Nuki Web give the same value and Opener states (`online`, `ring_to_open_active`, `open`, …) are covered; an unknown code shows as unknown instead of an error
+
 ### 0.6.6
 * Device lookups use `async_get_device_by_identifier` (scoped to the config entry): `device_registry.async_get_device` is deprecated and stops working in Home Assistant 2027.8
 * Firmware versions are passed to the device registry as strings (Nuki Web sends a number; Home Assistant 2026.12 accepts only strings)
